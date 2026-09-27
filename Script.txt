@@ -1,0 +1,523 @@
+-- Fake Chat, Verified Badge Toggle, Instant Leaderboard (0ms Delay Fix), Custom Notification & ARTEAM Watermark
+local Players = game:GetService("Players")
+local TextChatService = game:GetService("TextChatService")
+local ChatService = game:GetService("Chat")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local VERIFIED_SYMBOL = ""
+local customDisplayName = LocalPlayer.DisplayName
+local customUsername = LocalPlayer.Name
+local customChatSender = LocalPlayer.DisplayName
+local isLocked = false
+local isChatBadgeEnabled = false
+
+-- Color System
+local selectedColorHex = "#00FFFF"
+local selectedColorRGB = Color3.fromRGB(0, 255, 255)
+
+local colorOptions = {
+	{Name = "Cyan", Hex = "#00FFFF", RGB = Color3.fromRGB(0, 255, 255)},
+	{Name = "Merah", Hex = "#FF3333", RGB = Color3.fromRGB(255, 51, 51)},
+	{Name = "Hijau", Hex = "#33FF33", RGB = Color3.fromRGB(51, 255, 51)},
+	{Name = "Biru", Hex = "#3388FF", RGB = Color3.fromRGB(51, 136, 255)},
+	{Name = "Kuning", Hex = "#FFFF33", RGB = Color3.fromRGB(255, 255, 51)},
+	{Name = "Ungu", Hex = "#B033FF", RGB = Color3.fromRGB(176, 51, 255)},
+	{Name = "Pink", Hex = "#FF33B0", RGB = Color3.fromRGB(255, 51, 176)},
+	{Name = "Orange", Hex = "#FF8833", RGB = Color3.fromRGB(255, 136, 51)},
+	{Name = "Putih", Hex = "#FFFFFF", RGB = Color3.fromRGB(255, 255, 255)}
+}
+
+---------------------------------------------------------
+-- 1. INSTANT LEADERBOARD & ESC MENU ENGINE (0ms DELAY)
+---------------------------------------------------------
+local realName = LocalPlayer.Name
+local realDisplayName = LocalPlayer.DisplayName
+
+local function enforceNameOnLabel(label)
+	if not label:IsA("TextLabel") then return end
+
+	local function checkAndReplace()
+		local text = label.Text
+		local targetDisplay = customDisplayName .. VERIFIED_SYMBOL
+		local targetUser = "@" .. customUsername
+
+		-- Username (@)
+		if string.find(text, "@" .. realName) and text ~= targetUser then
+			label.Text = targetUser
+		-- Display Name
+		elseif (text == realDisplayName or string.find(text, realDisplayName)) and text ~= targetDisplay then
+			label.Text = targetDisplay
+		end
+	end
+
+	checkAndReplace()
+
+	if not label:GetAttribute("InstantNameHooked") then
+		label:SetAttribute("InstantNameHooked", true)
+		label:GetPropertyChangedSignal("Text"):Connect(checkAndReplace)
+	end
+end
+
+local function hookGuiContainer(container)
+	if not container then return end
+	
+	for _, desc in ipairs(container:GetDescendants()) do
+		enforceNameOnLabel(desc)
+	end
+	
+	container.DescendantAdded:Connect(function(desc)
+		enforceNameOnLabel(desc)
+	end)
+end
+
+task.spawn(function()
+	local playerList = CoreGui:WaitForChild("PlayerList", 5)
+	local robloxGui = CoreGui:WaitForChild("RobloxGui", 5)
+
+	hookGuiContainer(playerList)
+	hookGuiContainer(robloxGui)
+end)
+
+---------------------------------------------------------
+-- 2. HOOK CHAT ASLI ROBLOX
+---------------------------------------------------------
+if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+	TextChatService.OnIncomingMessage = function(message)
+		if isLocked and message.TextSource and message.TextSource.UserId == LocalPlayer.UserId then
+			local badgeText = isChatBadgeEnabled and VERIFIED_SYMBOL or ""
+			local properties = Instance.new("TextChatMessageProperties")
+			properties.PrefixText = "<font color='" .. selectedColorHex .. "'>" .. customChatSender .. badgeText .. ":</font>"
+			return properties
+		end
+	end
+end
+
+---------------------------------------------------------
+-- 3. GUI FAKE CHAT, BADGE TOGGLE & NOTIFICATION
+---------------------------------------------------------
+if PlayerGui:FindFirstChild("FakeChatGui") then
+	PlayerGui.FakeChatGui:Destroy()
+end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "FakeChatGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = PlayerGui
+
+-- Custom Notification Toast System
+local function showNotification(msgText)
+	local oldNotif = screenGui:FindFirstChild("ToastNotif")
+	if oldNotif then oldNotif:Destroy() end
+
+	local notifFrame = Instance.new("Frame")
+	notifFrame.Name = "ToastNotif"
+	notifFrame.Size = UDim2.new(0, 280, 0, 50)
+	notifFrame.Position = UDim2.new(1, 10, 0.82, 0)
+	notifFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+	notifFrame.BorderSizePixel = 0
+	notifFrame.ZIndex = 100
+	notifFrame.Parent = screenGui
+
+	local notifCorner = Instance.new("UICorner")
+	notifCorner.CornerRadius = UDim.new(0, 8)
+	notifCorner.Parent = notifFrame
+
+	local notifStroke = Instance.new("UIStroke")
+	notifStroke.Color = Color3.fromRGB(40, 160, 60)
+	notifStroke.Thickness = 1.5
+	notifStroke.Parent = notifFrame
+
+	local notifLabel = Instance.new("TextLabel")
+	notifLabel.Size = UDim2.new(1, -30, 1, 0)
+	notifLabel.Position = UDim2.new(0, 8, 0, 0)
+	notifLabel.Text = msgText
+	notifLabel.TextColor3 = Color3.fromRGB(240, 240, 240)
+	notifLabel.Font = Enum.Font.SourceSansBold
+	notifLabel.TextSize = 11
+	notifLabel.TextWrapped = true
+	notifLabel.TextXAlignment = Enum.TextXAlignment.Left
+	notifLabel.BackgroundTransparency = 1
+	notifLabel.ZIndex = 101
+	notifLabel.Parent = notifFrame
+
+	local closeNotifBtn = Instance.new("TextButton")
+	closeNotifBtn.Size = UDim2.new(0, 20, 0, 20)
+	closeNotifBtn.Position = UDim2.new(1, -22, 0, 4)
+	closeNotifBtn.Text = "X"
+	closeNotifBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+	closeNotifBtn.BackgroundTransparency = 1
+	closeNotifBtn.Font = Enum.Font.SourceSansBold
+	closeNotifBtn.TextSize = 12
+	closeNotifBtn.ZIndex = 102
+	closeNotifBtn.Parent = notifFrame
+
+	notifFrame:TweenPosition(UDim2.new(1, -290, 0.82, 0), Enum.EasingDirection.Out, Enum.EasingStyle.Quart, 0.3, true)
+
+	local function dismissNotif()
+		notifFrame:TweenPosition(UDim2.new(1, 10, 0.82, 0), Enum.EasingDirection.In, Enum.EasingStyle.Quart, 0.3, true, function()
+			notifFrame:Destroy()
+		end)
+	end
+
+	closeNotifBtn.MouseButton1Click:Connect(dismissNotif)
+
+	task.delay(4, function()
+		if notifFrame and notifFrame.Parent then
+			dismissNotif()
+		end
+	end)
+end
+
+-- Main Frame UI
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 320, 0, 260) -- Diperbesar sedikit untuk ruang Watermark
+mainFrame.Position = UDim2.new(0.5, -160, 0.15, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+mainFrame.BackgroundTransparency = 0.15
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = screenGui
+
+local frameCorner = Instance.new("UICorner")
+frameCorner.CornerRadius = UDim.new(0, 8)
+frameCorner.Parent = mainFrame
+
+-- Title Bar Header
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, -60, 0, 25)
+titleLabel.Position = UDim2.new(0, 10, 0, 2)
+titleLabel.Text = "FAKE CHAT & NAME CHANGER"
+titleLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+titleLabel.Font = Enum.Font.SourceSansBold
+titleLabel.TextSize = 12
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.BackgroundTransparency = 1
+titleLabel.Parent = mainFrame
+
+-- Window Controls (X & -)
+local closeButton = Instance.new("TextButton")
+closeButton.Size = UDim2.new(0, 22, 0, 22)
+closeButton.Position = UDim2.new(1, -26, 0, 4)
+closeButton.Text = "X"
+closeButton.TextColor3 = Color3.fromRGB(255, 100, 100)
+closeButton.BackgroundColor3 = Color3.fromRGB(60, 30, 30)
+closeButton.Font = Enum.Font.SourceSansBold
+closeButton.TextSize = 12
+closeButton.Parent = mainFrame
+
+local closeCorner = Instance.new("UICorner")
+closeCorner.CornerRadius = UDim.new(0, 4)
+closeCorner.Parent = closeButton
+
+local minButton = Instance.new("TextButton")
+minButton.Size = UDim2.new(0, 22, 0, 22)
+minButton.Position = UDim2.new(1, -52, 0, 4)
+minButton.Text = "-"
+minButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+minButton.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+minButton.Font = Enum.Font.SourceSansBold
+minButton.TextSize = 14
+minButton.Parent = mainFrame
+
+local minCorner = Instance.new("UICorner")
+minCorner.CornerRadius = UDim.new(0, 4)
+minCorner.Parent = minButton
+
+local openButton = Instance.new("TextButton")
+openButton.Name = "OpenButton"
+openButton.Size = UDim2.new(0, 60, 0, 30)
+openButton.Position = UDim2.new(0.5, -30, 0.05, 0)
+openButton.Text = "OPEN"
+openButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+openButton.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
+openButton.Font = Enum.Font.SourceSansBold
+openButton.TextSize = 12
+openButton.Visible = false
+openButton.Active = true
+openButton.Draggable = true
+openButton.Parent = screenGui
+
+local openCorner = Instance.new("UICorner")
+openCorner.CornerRadius = UDim.new(0, 15)
+openCorner.Parent = openButton
+
+-- Helper TextBox Generator
+local function createTextBox(name, placeholder, text, posY, sizeY, sizeX)
+	local tb = Instance.new("TextBox")
+	tb.Name = name
+	tb.Size = UDim2.new(0, sizeX or 300, 0, sizeY)
+	tb.Position = UDim2.new(0, 10, 0, posY)
+	tb.PlaceholderText = placeholder
+	tb.Text = text
+	tb.TextColor3 = Color3.fromRGB(255, 255, 255)
+	tb.PlaceholderColor3 = Color3.fromRGB(180, 180, 180)
+	tb.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+	tb.BackgroundTransparency = 0.3
+	tb.Font = Enum.Font.SourceSansBold
+	tb.TextSize = 13
+	tb.ClearTextOnFocus = false
+	tb.Parent = mainFrame
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 6)
+	corner.Parent = tb
+	return tb
+end
+
+-- Inputs
+local displayNameBox = createTextBox("DisplayNameBox", "Ubah Display Name", customDisplayName, 30, 26, 300)
+local usernameBox = createTextBox("UsernameBox", "Ubah Username (@usn)", customUsername, 60, 26, 300)
+
+-- Input Sender Name + Dropdown Color + Badge Toggle Button
+local senderNameBox = createTextBox("SenderNameBox", "Nama Pengirim Fake Chat", customDisplayName, 90, 26, 230)
+
+local colorDropdownBtn = Instance.new("TextButton")
+colorDropdownBtn.Name = "ColorDropdownBtn"
+colorDropdownBtn.Size = UDim2.new(0, 30, 0, 26)
+colorDropdownBtn.Position = UDim2.new(0, 245, 0, 90)
+colorDropdownBtn.Text = "▽"
+colorDropdownBtn.TextColor3 = selectedColorRGB
+colorDropdownBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+colorDropdownBtn.Font = Enum.Font.SourceSansBold
+colorDropdownBtn.TextSize = 14
+colorDropdownBtn.Parent = mainFrame
+
+local dropCorner = Instance.new("UICorner")
+dropCorner.CornerRadius = UDim.new(0, 6)
+dropCorner.Parent = colorDropdownBtn
+
+local chatBadgeToggleBtn = Instance.new("TextButton")
+chatBadgeToggleBtn.Name = "ChatBadgeToggleBtn"
+chatBadgeToggleBtn.Size = UDim2.new(0, 30, 0, 26)
+chatBadgeToggleBtn.Position = UDim2.new(0, 280, 0, 90)
+chatBadgeToggleBtn.Text = ""
+chatBadgeToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+chatBadgeToggleBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+chatBadgeToggleBtn.Font = Enum.Font.SourceSansBold
+chatBadgeToggleBtn.TextSize = 14
+chatBadgeToggleBtn.Parent = mainFrame
+
+local badgeBtnCorner = Instance.new("UICorner")
+badgeBtnCorner.CornerRadius = UDim.new(0, 6)
+badgeBtnCorner.Parent = chatBadgeToggleBtn
+
+-- Dropdown Frame List
+local dropdownList = Instance.new("ScrollingFrame")
+dropdownList.Name = "DropdownList"
+dropdownList.Size = UDim2.new(0, 100, 0, 120)
+dropdownList.Position = UDim2.new(0, 175, 0, 120)
+dropdownList.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+dropdownList.BorderSizePixel = 0
+dropdownList.CanvasSize = UDim2.new(0, 0, 0, #colorOptions * 24)
+dropdownList.ScrollBarThickness = 4
+dropdownList.Visible = false
+dropdownList.ZIndex = 10
+dropdownList.Parent = mainFrame
+
+local dropListCorner = Instance.new("UICorner")
+dropListCorner.CornerRadius = UDim.new(0, 6)
+dropListCorner.Parent = dropdownList
+
+local UIListLayout = Instance.new("UIListLayout")
+UIListLayout.Parent = dropdownList
+UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+for _, item in ipairs(colorOptions) do
+	local colorBtn = Instance.new("TextButton")
+	colorBtn.Size = UDim2.new(1, 0, 0, 24)
+	colorBtn.Text = item.Name
+	colorBtn.TextColor3 = item.RGB
+	colorBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+	colorBtn.BackgroundTransparency = 0.5
+	colorBtn.Font = Enum.Font.SourceSansBold
+	colorBtn.TextSize = 13
+	colorBtn.ZIndex = 11
+	colorBtn.Parent = dropdownList
+
+	colorBtn.MouseButton1Click:Connect(function()
+		selectedColorHex = item.Hex
+		selectedColorRGB = item.RGB
+		colorDropdownBtn.TextColor3 = item.RGB
+		dropdownList.Visible = false
+	end)
+end
+
+colorDropdownBtn.MouseButton1Click:Connect(function()
+	dropdownList.Visible = not dropdownList.Visible
+end)
+
+-- Toggle Badge Chat
+chatBadgeToggleBtn.MouseButton1Click:Connect(function()
+	isChatBadgeEnabled = not isChatBadgeEnabled
+	if isChatBadgeEnabled then
+		chatBadgeToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
+		showNotification("Badge Verification Mode ON! By: ihateyouforeverandeverrr ON TIKTOK!")
+	else
+		chatBadgeToggleBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+	end
+end)
+
+-- Message Box & Send Button
+local messageBox = createTextBox("MessageBox", "Enter Message", "", 122, 32, 190)
+
+local sendButton = Instance.new("TextButton")
+sendButton.Size = UDim2.new(0, 100, 0, 32)
+sendButton.Position = UDim2.new(1, -110, 0, 122)
+sendButton.Text = "Enter/Masukan"
+sendButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+sendButton.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
+sendButton.Font = Enum.Font.SourceSansBold
+sendButton.TextSize = 12
+sendButton.Parent = mainFrame
+
+local sendCorner = Instance.new("UICorner")
+sendCorner.CornerRadius = UDim.new(0, 6)
+sendCorner.Parent = sendButton
+
+-- Locker Button
+local lockButton = Instance.new("TextButton")
+lockButton.Name = "LockButton"
+lockButton.Size = UDim2.new(0, 300, 0, 32)
+lockButton.Position = UDim2.new(0, 10, 0, 160)
+lockButton.Text = "Locker! [ OFF ]"
+lockButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+lockButton.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+lockButton.Font = Enum.Font.SourceSansBold
+lockButton.TextSize = 13
+lockButton.Parent = mainFrame
+
+local lockCorner = Instance.new("UICorner")
+lockCorner.CornerRadius = UDim.new(0, 6)
+lockCorner.Parent = lockButton
+
+---------------------------------------------------------
+-- WATERMARK SECTION (PALING BAWAH UI)
+---------------------------------------------------------
+local watermarkLabel = Instance.new("TextLabel")
+watermarkLabel.Name = "WatermarkLabel"
+watermarkLabel.Size = UDim2.new(0, 300, 0, 55)
+watermarkLabel.Position = UDim2.new(0, 10, 0, 198)
+watermarkLabel.Text = "By: ARTEAM\nTiktok: ihateyouforeverandeverrr\nBerikan saran atau kritik anda, atau laporkan bug, dan berikan kami ide untuk script!"
+watermarkLabel.TextColor3 = Color3.fromRGB(160, 170, 190)
+watermarkLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
+watermarkLabel.BackgroundTransparency = 0.4
+watermarkLabel.Font = Enum.Font.SourceSansBold
+watermarkLabel.TextSize = 10
+watermarkLabel.TextWrapped = true
+watermarkLabel.TextYAlignment = Enum.TextYAlignment.Center
+watermarkLabel.Parent = mainFrame
+
+local watermarkCorner = Instance.new("UICorner")
+watermarkCorner.CornerRadius = UDim.new(0, 6)
+watermarkCorner.Parent = watermarkLabel
+
+---------------------------------------------------------
+-- 4. CONTROLLER & LOGIC EVENT
+---------------------------------------------------------
+
+minButton.MouseButton1Click:Connect(function()
+	mainFrame.Visible = false
+	openButton.Visible = true
+	dropdownList.Visible = false
+end)
+
+openButton.MouseButton1Click:Connect(function()
+	mainFrame.Visible = true
+	openButton.Visible = false
+end)
+
+closeButton.MouseButton1Click:Connect(function()
+	screenGui:Destroy()
+end)
+
+-- Toggle Locker
+lockButton.MouseButton1Click:Connect(function()
+	isLocked = not isLocked
+	
+	if isLocked then
+		lockButton.Text = "Locker! [ ON - LOCKED ]"
+		lockButton.BackgroundColor3 = Color3.fromRGB(40, 160, 60)
+		
+		displayNameBox.TextEditable = false
+		usernameBox.TextEditable = false
+		senderNameBox.TextEditable = false
+		colorDropdownBtn.Active = false
+		chatBadgeToggleBtn.Active = false
+		dropdownList.Visible = false
+	else
+		lockButton.Text = "Locker! [ OFF ]"
+		lockButton.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+		
+		displayNameBox.TextEditable = true
+		usernameBox.TextEditable = true
+		senderNameBox.TextEditable = true
+		colorDropdownBtn.Active = true
+		chatBadgeToggleBtn.Active = true
+	end
+end)
+
+-- Input Updates
+displayNameBox:GetPropertyChangedSignal("Text"):Connect(function()
+	if not isLocked then
+		customDisplayName = displayNameBox.Text ~= "" and displayNameBox.Text or LocalPlayer.DisplayName
+	end
+end)
+
+usernameBox:GetPropertyChangedSignal("Text"):Connect(function()
+	if not isLocked then
+		local cleanText = string.gsub(usernameBox.Text, "@", "")
+		customUsername = cleanText ~= "" and cleanText or LocalPlayer.Name
+	end
+end)
+
+senderNameBox:GetPropertyChangedSignal("Text"):Connect(function()
+	if not isLocked then
+		customChatSender = senderNameBox.Text ~= "" and senderNameBox.Text or customDisplayName
+	end
+end)
+
+-- Send Fake Message
+local function sendMessage()
+	local message = messageBox.Text
+	local senderName = isLocked and customChatSender or (senderNameBox.Text ~= "" and senderNameBox.Text or customDisplayName)
+	local badgeText = isChatBadgeEnabled and VERIFIED_SYMBOL or ""
+
+	if message ~= "" then
+		pcall(function()
+			if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+				local generalChannel = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
+				if generalChannel then
+					generalChannel:DisplaySystemMessage("<font color='" .. selectedColorHex .. "'>" .. senderName .. badgeText .. ":</font> " .. message)
+				end
+			else
+				game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
+					Text = senderName .. badgeText .. ": " .. message,
+					Color = selectedColorRGB,
+					Font = Enum.Font.SourceSansBold,
+					TextSize = 18
+				})
+			end
+			
+			-- Bubble Chat
+			local character = LocalPlayer.Character
+			if character and character:FindFirstChild("Head") then
+				if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+					TextChatService:DisplayBubble(character.Head, message)
+				else
+					ChatService:Chat(character.Head, message, Enum.ChatColor.White)
+				end
+			end
+		end)
+
+		messageBox.Text = ""
+	end
+end
+
+sendButton.MouseButton1Click:Connect(sendMessage)
+messageBox.FocusLost:Connect(function(enterPressed)
+	if enterPressed then sendMessage() end
+end)
